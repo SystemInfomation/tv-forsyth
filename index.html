@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.4.12/hls.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: #000;
+    overflow: hidden;
+    cursor: none;
+  }
+
+  video {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  #cursor {
+    position: fixed;
+    width: 8px; height: 8px;
+    background: #fff;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 999;
+    transform: translate(-50%, -50%);
+    mix-blend-mode: difference;
+    transition: opacity 0.4s ease;
+  }
+  #cursor.hidden { opacity: 0; }
+
+  #live-pill {
+    position: fixed;
+    top: 20px; right: 20px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    z-index: 50;
+    transition: opacity 0.8s ease;
+  }
+  #live-pill.gone { opacity: 0; pointer-events: none; }
+
+  .dot {
+    width: 6px; height: 6px;
+    background: #ff3333;
+    border-radius: 50%;
+    animation: blink 1.6s ease-in-out infinite;
+  }
+
+  .live-text {
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.6);
+  }
+
+  #loader {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    transition: opacity 0.9s ease;
+  }
+  #loader.gone { opacity: 0; pointer-events: none; }
+
+  .ring {
+    width: 28px; height: 28px;
+    border: 1.5px solid rgba(255,255,255,0.08);
+    border-top-color: rgba(255,255,255,0.55);
+    border-radius: 50%;
+    animation: spin 0.75s linear infinite;
+  }
+
+  #err {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: #000;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 100;
+  }
+
+  #err p {
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.2);
+  }
+
+  #retry {
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.35);
+    background: none;
+    border: 1px solid rgba(255,255,255,0.12);
+    padding: 8px 20px;
+    border-radius: 2px;
+    cursor: none;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  #retry:hover { border-color: rgba(255,255,255,0.35); color: rgba(255,255,255,0.6); }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.2; }
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div id="cursor"></div>
+<video id="v" playsinline muted></video>
+
+<div id="live-pill">
+  <div class="dot"></div>
+  <span class="live-text">Live</span>
+</div>
+
+<div id="loader"><div class="ring"></div></div>
+
+<div id="err">
+  <p>Stream offline</p>
+  <button id="retry" onclick="init()">Retry</button>
+</div>
+
+<script>
+  const SRC = 'https://edge-f.swagit.com/live/forsythcountyga/smil:std-4x3-1-a/playlist.m3u8';
+  const video = document.getElementById('v');
+  const loader = document.getElementById('loader');
+  const errEl  = document.getElementById('err');
+  const pill   = document.getElementById('live-pill');
+  const cursor = document.getElementById('cursor');
+
+  // Custom cursor
+  document.addEventListener('mousemove', e => {
+    cursor.style.left = e.clientX + 'px';
+    cursor.style.top  = e.clientY + 'px';
+  });
+
+  // Auto-hide pill + cursor after idle
+  let idleTimer;
+  function resetIdle() {
+    pill.classList.remove('gone');
+    cursor.classList.remove('hidden');
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      pill.classList.add('gone');
+      cursor.classList.add('hidden');
+    }, 3500);
+  }
+  document.addEventListener('mousemove', resetIdle);
+  document.addEventListener('touchstart', resetIdle);
+  setTimeout(() => { pill.classList.add('gone'); cursor.classList.add('hidden'); }, 4000);
+
+  function showErr() {
+    loader.classList.add('gone');
+    errEl.style.display = 'flex';
+  }
+
+  function onReady() {
+    video.play()
+      .then(() => loader.classList.add('gone'))
+      .catch(() => { video.muted = false; video.play().then(() => loader.classList.add('gone')).catch(showErr); });
+  }
+
+  let hls;
+  function init() {
+    errEl.style.display = 'none';
+    loader.classList.remove('gone');
+    if (hls) { hls.destroy(); hls = null; }
+
+    if (Hls.isSupported()) {
+      hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+      hls.loadSource(SRC);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, onReady);
+      hls.on(Hls.Events.ERROR, (e, d) => { if (d.fatal) showErr(); });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = SRC;
+      video.addEventListener('loadedmetadata', onReady, { once: true });
+      video.addEventListener('error', showErr, { once: true });
+    } else {
+      showErr();
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>
