@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Live</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Secure Live</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.4.12/hls.min.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -13,8 +13,87 @@
     background: #000;
     overflow: hidden;
     cursor: none;
+    font-family: 'Helvetica Neue', Helvetica, sans-serif;
+    user-select: none; /* Prevent text selection */
   }
 
+  /* --- PIN GATE STYLES --- */
+  #pin-gate {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.6s ease, visibility 0.6s ease;
+  }
+  
+  #pin-gate.unlocked {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .security-label {
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.4);
+    margin-bottom: 30px;
+  }
+
+  .pin-container {
+    display: flex;
+    gap: 15px;
+  }
+
+  .pin-box {
+    width: 50px;
+    height: 60px;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid rgba(255,255,255,0.2);
+    color: #fff;
+    font-size: 24px;
+    text-align: center;
+    outline: none;
+    transition: border-color 0.3s ease, transform 0.1s ease;
+    cursor: none; /* Hide native cursor for consistency */
+  }
+
+  .pin-box:focus {
+    border-bottom-color: #fff;
+  }
+
+  .pin-box.error {
+    border-bottom-color: #ff3333;
+    color: #ff3333;
+    animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+  }
+
+  .auth-status {
+    height: 20px;
+    margin-top: 20px;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: #ff3333;
+    opacity: 0;
+    transition: opacity 0.3s;
+    text-transform: uppercase;
+  }
+
+  .auth-status.visible { opacity: 1; }
+
+  @keyframes shake {
+    10%, 90% { transform: translate3d(-1px, 0, 0); }
+    20%, 80% { transform: translate3d(2px, 0, 0); }
+    30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+    40%, 60% { transform: translate3d(4px, 0, 0); }
+  }
+
+  /* --- STREAM STYLES --- */
   video {
     position: fixed;
     inset: 0;
@@ -22,7 +101,11 @@
     height: 100%;
     object-fit: contain;
     display: block;
+    opacity: 0;
+    transition: opacity 1s ease;
   }
+  
+  video.visible { opacity: 1; }
 
   #cursor {
     position: fixed;
@@ -30,7 +113,7 @@
     background: #fff;
     border-radius: 50%;
     pointer-events: none;
-    z-index: 999;
+    z-index: 10000;
     transform: translate(-50%, -50%);
     mix-blend-mode: difference;
     transition: opacity 0.4s ease;
@@ -44,8 +127,10 @@
     align-items: center;
     gap: 7px;
     z-index: 50;
+    opacity: 0; /* Hidden initially */
     transition: opacity 0.8s ease;
   }
+  #live-pill.active { opacity: 1; }
   #live-pill.gone { opacity: 0; pointer-events: none; }
 
   .dot {
@@ -56,7 +141,6 @@
   }
 
   .live-text {
-    font-family: 'Helvetica Neue', Helvetica, sans-serif;
     font-size: 11px;
     font-weight: 500;
     letter-spacing: 0.2em;
@@ -68,12 +152,13 @@
     position: fixed;
     inset: 0;
     background: #000;
-    display: flex;
+    display: none; /* Hidden until PIN is correct */
     align-items: center;
     justify-content: center;
     z-index: 100;
     transition: opacity 0.9s ease;
   }
+  #loader.active { display: flex; opacity: 1; }
   #loader.gone { opacity: 0; pointer-events: none; }
 
   .ring {
@@ -97,7 +182,6 @@
   }
 
   #err p {
-    font-family: 'Helvetica Neue', Helvetica, sans-serif;
     font-size: 11px;
     letter-spacing: 0.15em;
     text-transform: uppercase;
@@ -105,7 +189,6 @@
   }
 
   #retry {
-    font-family: 'Helvetica Neue', Helvetica, sans-serif;
     font-size: 11px;
     letter-spacing: 0.15em;
     text-transform: uppercase;
@@ -128,7 +211,22 @@
 </head>
 <body>
 
+<!-- Custom Cursor -->
 <div id="cursor"></div>
+
+<!-- PIN Security Gate -->
+<div id="pin-gate">
+  <div class="security-label">Encrypted Stream Access</div>
+  <div class="pin-container">
+    <input type="password" inputmode="numeric" maxlength="1" class="pin-box" autofocus>
+    <input type="password" inputmode="numeric" maxlength="1" class="pin-box">
+    <input type="password" inputmode="numeric" maxlength="1" class="pin-box">
+    <input type="password" inputmode="numeric" maxlength="1" class="pin-box">
+  </div>
+  <div class="auth-status" id="auth-status">Access Denied</div>
+</div>
+
+<!-- Stream Elements -->
 <video id="v" playsinline muted></video>
 
 <div id="live-pill">
@@ -144,20 +242,109 @@
 </div>
 
 <script>
-  const SRC = 'https://edge-f.swagit.com/live/forsythcountyga/smil:std-4x3-1-a/playlist.m3u8';
-  const video = document.getElementById('v');
-  const loader = document.getElementById('loader');
-  const errEl  = document.getElementById('err');
-  const pill   = document.getElementById('live-pill');
-  const cursor = document.getElementById('cursor');
+  // --- SECURITY / DETERRENTS ---
+  // Disable right-click context menu
+  document.addEventListener('contextmenu', e => e.preventDefault());
+  
+  // Disable common developer shortcut keys
+  document.addEventListener('keydown', e => {
+    if (e.key === 'F12' || 
+       (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'C' || e.key === 'J')) || 
+       (e.ctrlKey && e.key === 'U')) {
+      e.preventDefault();
+    }
+  });
 
+
+  // --- CURSOR LOGIC ---
+  const cursor = document.getElementById('cursor');
   document.addEventListener('mousemove', e => {
     cursor.style.left = e.clientX + 'px';
     cursor.style.top  = e.clientY + 'px';
   });
 
+
+  // --- PIN GATE LOGIC ---
+  const CORRECT_PIN = "0000";
+  const pinGate = document.getElementById('pin-gate');
+  const pinBoxes = document.querySelectorAll('.pin-box');
+  const authStatus = document.getElementById('auth-status');
+  let isUnlocked = false;
+
+  pinBoxes.forEach((box, index) => {
+    // Restrict to numbers only
+    box.addEventListener('input', (e) => {
+      box.value = box.value.replace(/[^0-9]/g, '');
+      
+      if (box.value !== '') {
+        if (index < pinBoxes.length - 1) {
+          pinBoxes[index + 1].focus();
+        } else {
+          verifyPin();
+        }
+      }
+      // Reset error states on typing
+      pinBoxes.forEach(b => b.classList.remove('error'));
+      authStatus.classList.remove('visible');
+    });
+
+    // Handle backspace for easy editing
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace' && box.value === '' && index > 0) {
+        pinBoxes[index - 1].focus();
+        pinBoxes[index - 1].value = '';
+      }
+    });
+  });
+
+  function verifyPin() {
+    let enteredPin = '';
+    pinBoxes.forEach(box => enteredPin += box.value);
+
+    if (enteredPin === CORRECT_PIN) {
+      // Success
+      isUnlocked = true;
+      authStatus.style.color = '#4ade80'; // green
+      authStatus.textContent = 'Decrypted';
+      authStatus.classList.add('visible');
+      
+      // Blur inputs so mobile keyboards close
+      pinBoxes.forEach(box => box.blur());
+
+      setTimeout(() => {
+        pinGate.classList.add('unlocked');
+        startStreamApp(); // Initialize the stream *only* after unlock
+      }, 800);
+    } else {
+      // Failure
+      authStatus.style.color = '#ff3333';
+      authStatus.textContent = 'Access Denied';
+      authStatus.classList.add('visible');
+      
+      pinBoxes.forEach(box => {
+        box.classList.add('error');
+        box.value = '';
+      });
+      pinBoxes[0].focus();
+      
+      setTimeout(() => {
+        pinBoxes.forEach(box => box.classList.remove('error'));
+      }, 400);
+    }
+  }
+
+
+  // --- STREAM LOGIC ---
+  const SRC = 'https://edge-f.swagit.com/live/forsythcountyga/smil:std-4x3-1-a/playlist.m3u8';
+  const video = document.getElementById('v');
+  const loader = document.getElementById('loader');
+  const errEl  = document.getElementById('err');
+  const pill   = document.getElementById('live-pill');
+
   let idleTimer;
   function resetIdle() {
+    if (!isUnlocked) return; // Don't trigger idle UI until unlocked
+    
     pill.classList.remove('gone');
     cursor.classList.remove('hidden');
     clearTimeout(idleTimer);
@@ -166,9 +353,16 @@
       cursor.classList.add('hidden');
     }, 3500);
   }
-  document.addEventListener('mousemove', resetIdle);
-  document.addEventListener('touchstart', resetIdle);
-  setTimeout(() => { pill.classList.add('gone'); cursor.classList.add('hidden'); }, 4000);
+
+  function startStreamApp() {
+    // Setup idle listeners now that we are in the stream
+    document.addEventListener('mousemove', resetIdle);
+    document.addEventListener('touchstart', resetIdle);
+    pill.classList.add('active');
+    resetIdle();
+    
+    init(); // Start fetching the video
+  }
 
   function showErr() {
     loader.classList.add('gone');
@@ -176,15 +370,21 @@
   }
 
   function onReady() {
+    video.classList.add('visible');
     video.play()
       .then(() => loader.classList.add('gone'))
-      .catch(() => { video.muted = false; video.play().then(() => loader.classList.add('gone')).catch(showErr); });
+      .catch(() => { 
+        video.muted = false; 
+        video.play().then(() => loader.classList.add('gone')).catch(showErr); 
+      });
   }
 
   let hls;
   function init() {
     errEl.style.display = 'none';
+    loader.classList.add('active');
     loader.classList.remove('gone');
+    
     if (hls) { hls.destroy(); hls = null; }
 
     if (Hls.isSupported()) {
@@ -201,8 +401,6 @@
       showErr();
     }
   }
-
-  init();
 </script>
 </body>
 </html>
