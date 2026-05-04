@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Secure Live</title>
+
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📺</text></svg>">
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.4.12/hls.min.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -211,10 +214,8 @@
 </head>
 <body>
 
-<!-- Custom Cursor -->
 <div id="cursor"></div>
 
-<!-- PIN Security Gate -->
 <div id="pin-gate">
   <div class="security-label">Encrypted Stream Access</div>
   <div class="pin-container">
@@ -226,7 +227,6 @@
   <div class="auth-status" id="auth-status">Access Denied</div>
 </div>
 
-<!-- Stream Elements -->
 <video id="v" playsinline muted></video>
 
 <div id="live-pill">
